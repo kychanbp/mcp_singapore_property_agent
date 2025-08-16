@@ -1,0 +1,24 @@
+{
+  "_comment": "Example Claude Desktop configuration file",
+  "_instructions": [
+    "1. Copy this file content to your Claude Desktop config:",
+    "   macOS: ~/Library/Application Support/Claude/claude_desktop_config.json",
+    "   Windows: %APPDATA%\\Claude\\claude_desktop_config.json",
+    "2. Update the 'args' path to the absolute path of your dist/index.js file",
+    "3. Replace credentials with your actual API keys:",
+    "   - OneMap: Register at https://onemap.gov.sg/ for email/password",
+    "   - URA: Get access key from URA API portal for property data",
+    "4. Restart Claude Desktop"
+  ],
+  "mcpServers": {
+    "mcp-property-search": {
+      "command": "node",
+      "args": ["/Users/kaiyinchan/Documents/codes/mcp_property_search/dist/index.js"],
+      "env": {
+        "ONEMAP_EMAIL": "your-email@example.com",
+        "ONEMAP_PASSWORD": "your-password",
+        "URA_ACCESS_KEY": "your-ura-access-key-here"
+      }
+    }
+  }
+}

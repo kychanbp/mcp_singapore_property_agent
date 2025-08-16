@@ -1,0 +1,39 @@
+{
+  "name": "@local/mcp-property-search",
+  "version": "1.0.0",
+  "description": "MCP server for finding MRT stations within commute distance in Singapore",
+  "main": "dist/index.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "test": "node test.js",
+    "test:jest": "jest"
+  },
+  "keywords": [
+    "mcp",
+    "singapore",
+    "mrt",
+    "transport",
+    "onemap"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "axios": "^1.6.0",
+    "better-sqlite3": "^12.2.0",
+    "dotenv": "^16.3.1",
+    "geolib": "^3.3.4",
+    "node-cache": "^5.1.2"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/jest": "^29.5.0",
+    "@types/node": "^20.0.0",
+    "jest": "^29.7.0",
+    "tsx": "^4.6.0",
+    "typescript": "^5.3.0"
+  }
+}
