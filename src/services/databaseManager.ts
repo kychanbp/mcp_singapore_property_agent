@@ -30,7 +30,7 @@ export interface PropertySearchOptions {
 
 export interface QuarterlyPriceTrend {
   quarter: string;      // "Q1'24"
-  avgPricePerSqm: number;
+  avgPricePerSqf: number;
   transactionCount: number;
 }
 
@@ -45,7 +45,7 @@ export interface PropertySearchResult {
   recentTransactions: TransactionRecord[];
   recentRentals: RentalRecord[];
   distance: number; // in meters
-  pricePerSqmTrend?: QuarterlyPriceTrend[];
+  pricePerSqfTrend?: QuarterlyPriceTrend[];
   latestPrice?: number;
   recentRentalInfo?: RecentRentalInfo;
 }
@@ -405,7 +405,7 @@ export class DatabaseManager {
   }
 
   /**
-   * Calculate quarterly price per sqm trends over 5 years
+   * Calculate quarterly price per sqf trends over 5 years
    */
   private calculatePriceTrends(transactions: TransactionRecord[]): QuarterlyPriceTrend[] {
     if (transactions.length === 0) return [];
@@ -415,19 +415,27 @@ export class DatabaseManager {
     if (validTransactions.length === 0) return [];
     
     // Group by quarter
-    const quarterlyData = new Map<string, { total: number; count: number; pricePerSqmSum: number }>();
+    const quarterlyData = new Map<string, { total: number; count: number; pricePerSqfSum: number }>();
     
     validTransactions.forEach(t => {
       const quarter = this.parseToQuarter(t.contract_date);
-      const pricePerSqm = t.price / t.area;
+      // Convert sqm to sqf (1 sqm = 10.764 sqf) and calculate price per sqf
+      const areaInSqf = t.area * 10.764;
+      const pricePerSqf = t.price / areaInSqf;
+      
+      // Validate reasonable psf range for Singapore properties ($200-$10,000 psf)
+      if (pricePerSqf < 200 || pricePerSqf > 10000) {
+        console.warn(`Suspicious price/sqf: $${pricePerSqf.toFixed(0)} for ${t.property_id} (Price: $${t.price}, Area: ${t.area}sqm)`);
+        return; // Skip outliers
+      }
       
       if (!quarterlyData.has(quarter)) {
-        quarterlyData.set(quarter, { total: 0, count: 0, pricePerSqmSum: 0 });
+        quarterlyData.set(quarter, { total: 0, count: 0, pricePerSqfSum: 0 });
       }
       
       const data = quarterlyData.get(quarter)!;
       data.count++;
-      data.pricePerSqmSum += pricePerSqm;
+      data.pricePerSqfSum += pricePerSqf;
     });
     
     // Convert to sorted array
@@ -435,7 +443,7 @@ export class DatabaseManager {
     quarterlyData.forEach((data, quarter) => {
       trends.push({
         quarter,
-        avgPricePerSqm: Math.round(data.pricePerSqmSum / data.count),
+        avgPricePerSqf: Math.round(data.pricePerSqfSum / data.count),
         transactionCount: data.count
       });
     });
@@ -524,7 +532,7 @@ export class DatabaseManager {
     `).all(property.id) as RentalRecord[];
     
     // Calculate quarterly trends and recent rental info
-    const pricePerSqmTrend = this.calculatePriceTrends(recentTransactions);
+    const pricePerSqfTrend = this.calculatePriceTrends(recentTransactions);
     const recentRentalInfo = this.getRecentRentalInfo(recentRentals);
     
     // Calculate latest price
@@ -538,7 +546,7 @@ export class DatabaseManager {
       recentTransactions,
       recentRentals,
       distance: property.distance,
-      pricePerSqmTrend,
+      pricePerSqfTrend,
       latestPrice,
       recentRentalInfo
     };

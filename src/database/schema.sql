@@ -114,8 +114,8 @@ SELECT
     t.contract_date,
     t.property_type,
     t.tenure,
-    -- Calculate price per sqm
-    ROUND(t.price / t.area, 0) as price_per_sqm
+    -- Calculate price per sqf (convert sqm to sqf: 1 sqm = 10.764 sqf)
+    ROUND(t.price / (t.area * 10.764), 0) as price_per_sqf
 FROM properties p
 JOIN transactions t ON p.id = t.property_id
 WHERE 

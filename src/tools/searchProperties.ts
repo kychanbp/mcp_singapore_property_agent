@@ -201,30 +201,30 @@ export async function handleSearchProperties(args: any) {
         const latestTxn = result.recentTransactions[0];
         output += `   💰 **Latest sale**: $${latestTxn.price.toLocaleString()} (${latestTxn.contract_date.substring(0,2)}/${latestTxn.contract_date.substring(2)})\n`;
         
-        // Price per sqm trend or single value
-        if (result.pricePerSqmTrend && result.pricePerSqmTrend.length > 0) {
-          const trends = result.pricePerSqmTrend;
+        // Price per sqf trend or single value
+        if (result.pricePerSqfTrend && result.pricePerSqfTrend.length > 0) {
+          const trends = result.pricePerSqfTrend;
           if (trends.length > 12) {
             // Condensed format for >12 quarters (show yearly)
             const firstTrend = trends[0];
             const lastTrend = trends[trends.length - 1];
             const yearlyTrends = trends.filter((_: any, index: number) => index % 4 === 3 || index === trends.length - 1);
-            const percentChange = ((lastTrend.avgPricePerSqm - firstTrend.avgPricePerSqm) / firstTrend.avgPricePerSqm * 100).toFixed(1);
+            const percentChange = ((lastTrend.avgPricePerSqf - firstTrend.avgPricePerSqf) / firstTrend.avgPricePerSqf * 100).toFixed(1);
             
-            const trendText = yearlyTrends.map((t: any) => `$${t.avgPricePerSqm.toLocaleString()} (${t.quarter})`).join(' → ');
-            output += `   📐 **Price/sqm trend (5yr)**: ${trendText} [${percentChange > '0' ? '+' : ''}${percentChange}%]\n`;
+            const trendText = yearlyTrends.map((t: any) => `$${t.avgPricePerSqf.toLocaleString()} (${t.quarter})`).join(' → ');
+            output += `   📐 **Price/sqf trend (5yr)**: ${trendText} [${percentChange > '0' ? '+' : ''}${percentChange}%]\n`;
           } else if (trends.length > 1) {
             // Full format for ≤12 quarters
             const firstTrend = trends[0];
             const lastTrend = trends[trends.length - 1];
-            const percentChange = ((lastTrend.avgPricePerSqm - firstTrend.avgPricePerSqm) / firstTrend.avgPricePerSqm * 100).toFixed(1);
+            const percentChange = ((lastTrend.avgPricePerSqf - firstTrend.avgPricePerSqf) / firstTrend.avgPricePerSqf * 100).toFixed(1);
             
-            const trendText = trends.map((t: any) => `${t.quarter}: $${t.avgPricePerSqm.toLocaleString()}`).join(' → ');
-            output += `   📐 **Price/sqm trend**: ${trendText} (${percentChange > '0' ? '+' : ''}${percentChange}%)\n`;
+            const trendText = trends.map((t: any) => `${t.quarter}: $${t.avgPricePerSqf.toLocaleString()}`).join(' → ');
+            output += `   📐 **Price/sqf trend**: ${trendText} (${percentChange > '0' ? '+' : ''}${percentChange}%)\n`;
           } else {
             // Single quarter only
             const trend = trends[0];
-            output += `   📐 **Price/sqm**: $${trend.avgPricePerSqm.toLocaleString()} (${trend.quarter} only)\n`;
+            output += `   📐 **Price/sqf**: $${trend.avgPricePerSqf.toLocaleString()} (${trend.quarter} only)\n`;
           }
         }
         
