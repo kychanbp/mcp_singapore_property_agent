@@ -398,10 +398,6 @@ export async function handleSearchProperties(args: any) {
       const schoolInfo = await getSchoolInfo(prop.street);
       output += schoolInfo;
 
-      // Add planning zone information if requested
-      const planningZoneInfo = await getPlanningZoneInfo(prop.street);
-      output += planningZoneInfo;
-
       output += `\n`;
     }
 
@@ -414,9 +410,7 @@ export async function handleSearchProperties(args: any) {
     output += `---\n\n💡 **Tips**:\n`;
     output += `- Use \`find_nearby_mrt\` to check MRT accessibility\n`;
     output += `- Use \`search_nearby_schools\` for detailed school information\n`;
-    output += `- Use \`search_planning_zones\` for comprehensive land use analysis\n`;
     output += `- Set \`include_schools: true\` to see primary schools for each property\n`;
-    output += `- Set \`include_planning_zones: true\` to see zoning and land use context\n`;
     output += `- Adjust radius or filters to see more/fewer results\n`;
     output += `- Market segments: CCR (Prime), RCR (City Fringe), OCR (Suburbs)`;
 

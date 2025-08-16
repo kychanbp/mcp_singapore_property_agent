@@ -100,7 +100,7 @@ LEFT JOIN transactions t ON p.id = t.property_id
 LEFT JOIN rentals r ON p.id = r.property_id
 GROUP BY p.id, p.project, p.street, p.x, p.y, p.market_segment, p.district;
 
--- Recent transactions (last 2 years)
+-- Recent transactions (last 2 years) with property age
 CREATE VIEW IF NOT EXISTS recent_transactions AS
 SELECT 
     p.project,
@@ -115,7 +115,25 @@ SELECT
     t.property_type,
     t.tenure,
     -- Calculate price per sqf (convert sqm to sqf: 1 sqm = 10.764 sqf)
-    ROUND(t.price / (t.area * 10.764), 0) as price_per_sqf
+    ROUND(t.price / (t.area * 10.764), 0) as price_per_sqf,
+    -- Extract completion year from tenure
+    CASE 
+        WHEN t.tenure LIKE '%commencing from%' THEN SUBSTR(t.tenure, -4)
+        ELSE NULL
+    END as completion_year,
+    -- Calculate property age
+    CASE 
+        WHEN t.tenure LIKE '%commencing from%' THEN 
+            CAST(strftime('%Y', 'now') AS INTEGER) - CAST(SUBSTR(t.tenure, -4) AS INTEGER)
+        ELSE NULL
+    END as property_age_years,
+    -- Decode sale type
+    CASE t.type_of_sale
+        WHEN '1' THEN 'New Sale'
+        WHEN '2' THEN 'Sub-sale'  
+        WHEN '3' THEN 'Resale'
+        ELSE 'Unknown'
+    END as sale_type
 FROM properties p
 JOIN transactions t ON p.id = t.property_id
 WHERE 

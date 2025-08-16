@@ -13,6 +13,8 @@ import { searchPropertiesTool, handleSearchProperties } from './tools/searchProp
 import { searchPropertiesMultipleTool, handleSearchPropertiesMultiple } from './tools/searchPropertiesMultiple.js';
 import { initPropertyDatabaseTool, handleInitPropertyDatabase } from './tools/initPropertyDatabase.js';
 import { queryPropertyDataTool, handleQueryPropertyData } from './tools/queryPropertyData.js';
+import { searchNearbySchoolsTool, searchNearbySchools } from './tools/searchNearbySchools.js';
+import { searchPlanningZonesTool, searchPlanningZones } from './tools/searchPlanningZones.js';
 
 export function setupTools(server: Server) {
   // Register tools list handler
@@ -26,7 +28,9 @@ export function setupTools(server: Server) {
         initPropertyDatabaseTool,
         searchPropertiesTool,
         searchPropertiesMultipleTool,
-        queryPropertyDataTool
+        queryPropertyDataTool,
+        searchNearbySchoolsTool,
+        searchPlanningZonesTool
       ]
     };
   });
@@ -58,8 +62,14 @@ export function setupTools(server: Server) {
         case 'search_properties_multiple':
           return await handleSearchPropertiesMultiple(args);
           
-        case 'query_property_data':
+        case 'execute_property_sql':
           return await handleQueryPropertyData(args);
+          
+        case 'search_nearby_schools':
+          return await searchNearbySchools(args as { location: string; distance_meters?: number });
+          
+        case 'search_planning_zones':
+          return await searchPlanningZones(args as { location: string; radius_meters?: number; include_statistics?: boolean });
           
         default:
           throw new Error(`Unknown tool: ${name}`);

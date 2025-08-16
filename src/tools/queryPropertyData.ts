@@ -1,35 +1,134 @@
 import { DatabaseManager } from '../services/databaseManager.js';
 
+// Database schema documentation for LLM reference
+const DATABASE_SCHEMA = `
+-- Singapore Property Database Schema
+
+TABLE properties:
+- id (INTEGER PRIMARY KEY)
+- project (TEXT) - Project name (e.g., "PARC CLEMATIS", "THE PINNACLE@DUXTON") 
+- street (TEXT) - Street address
+- x, y (REAL) - SVY21 coordinates for spatial queries
+- market_segment (TEXT) - 'CCR'/'RCR'/'OCR' (Core Central/Rest of Core/Outside Core)
+- district (TEXT) - Singapore districts '01' to '28'
+
+TABLE transactions:
+- id, property_id (INTEGER)
+- price (INTEGER) - Transaction price in SGD
+- area (REAL) - Floor area in square meters
+- contract_date (TEXT) - MMYY format (e.g., '1224' = Dec 2024, '0125' = Jan 2025)
+- property_type (TEXT) - 'Apartment'/'Condominium'/'Terrace'/'Semi-detached'/'Detached'
+- floor_range (TEXT) - Floor range like '01-05', '21-25', '-' for landed
+- tenure (TEXT) - Contains lease info like '99 yrs lease commencing from 2024' or 'Freehold'
+- type_of_sale (TEXT) - '1'=New Sale, '2'=Sub-sale, '3'=Resale
+- type_of_area (TEXT) - 'Strata'/'Land' etc.
+
+TABLE rentals:
+- id, property_id (INTEGER)  
+- rent (INTEGER) - Monthly rent in SGD
+- bedrooms (INTEGER) - Number of bedrooms (NULL if not specified)
+- lease_date (TEXT) - MMYY format
+- area_sqm, area_sqft (TEXT) - Area ranges (e.g., "160-170")
+- property_type (TEXT) - Property type for rentals
+- district (TEXT) - District code
+
+USEFUL FORMULAS:
+- Price per sqf: ROUND(price/(area*10.764), 0) -- Convert sqm to sqf
+- Quarter extraction: 
+  CASE 
+    WHEN CAST(SUBSTR(contract_date,1,2) AS INTEGER) <= 3 THEN SUBSTR(contract_date,3,2)||'Q1'
+    WHEN CAST(SUBSTR(contract_date,1,2) AS INTEGER) <= 6 THEN SUBSTR(contract_date,3,2)||'Q2'
+    WHEN CAST(SUBSTR(contract_date,1,2) AS INTEGER) <= 9 THEN SUBSTR(contract_date,3,2)||'Q3'
+    ELSE SUBSTR(contract_date,3,2)||'Q4'
+  END
+- Property completion year (from tenure):
+  CASE 
+    WHEN tenure LIKE '%commencing from%' THEN SUBSTR(tenure, -4)
+    ELSE NULL
+  END
+- Property age: 2025 - CAST(SUBSTR(tenure, -4) AS INTEGER)
+- Sale type: CASE type_of_sale WHEN '1' THEN 'New Sale' WHEN '2' THEN 'Sub-sale' WHEN '3' THEN 'Resale' END
+
+COMMON JOINS:
+- Properties with transactions: properties p JOIN transactions t ON p.id = t.property_id
+- Properties with rentals: properties p JOIN rentals r ON p.id = r.property_id
+
+TIME FILTERS:
+- Last 1 year: contract_date >= '0124' (or current year-1)
+- Last 2 years: contract_date >= '0123' (or current year-2) 
+- Specific year: contract_date LIKE '%24' for 2024
+`;
+
 export const queryPropertyDataTool = {
-  name: 'query_property_data',
-  description: 'Execute natural language queries against the Singapore property database for custom analysis and insights',
+  name: 'execute_property_sql',
+  description: `Execute custom SQL queries against the Singapore property database. ${DATABASE_SCHEMA}`,
   inputSchema: {
     type: 'object',
     properties: {
-      question: {
+      sql_query: {
         type: 'string',
-        description: 'Natural language question about Singapore properties (e.g., "Compare rental yields in District 9 vs 10", "Show 2-bedroom prices in Orchard area")'
+        description: 'SQL SELECT query to execute against the property database (only SELECT statements allowed)'
+      },
+      description: {
+        type: 'string',
+        description: 'Human-readable description of what this query analyzes (optional)',
+        default: 'Custom property analysis'
       },
       format: {
         type: 'string',
         enum: ['table', 'summary', 'chart'],
-        description: 'Output format preference: table (structured data), summary (key insights), chart (data for visualization)',
+        description: 'Output format preference: table (structured data), summary (key insights), chart (CSV data)',
         default: 'table'
       },
       limit: {
         type: 'number',
-        description: 'Maximum number of results to return (default: 50, max: 200)',
-        default: 50,
+        description: 'Maximum number of results to return (default: 100, max: 1000)',
+        default: 100,
         minimum: 1,
-        maximum: 200
+        maximum: 1000
       }
     },
-    required: ['question']
+    required: ['sql_query']
   }
 };
 
-// Query templates for common property analysis patterns
-const queryTemplates = {
+// SQL Security validation
+function isSelectQuery(sql: string): boolean {
+  const normalizedSql = sql.trim().toUpperCase();
+  
+  // Must start with SELECT
+  if (!normalizedSql.startsWith('SELECT')) {
+    return false;
+  }
+  
+  // Block dangerous operations
+  const forbiddenKeywords = [
+    'INSERT', 'UPDATE', 'DELETE', 'DROP', 'CREATE', 'ALTER', 
+    'TRUNCATE', 'REPLACE', 'PRAGMA', 'ATTACH', 'DETACH'
+  ];
+  
+  for (const keyword of forbiddenKeywords) {
+    if (normalizedSql.includes(keyword)) {
+      return false;
+    }
+  }
+  
+  return true;
+}
+
+function sanitizeSQL(sql: string, limit: number): string {
+  let cleanSql = sql.trim();
+  
+  // Add LIMIT if not present
+  if (!cleanSql.toUpperCase().includes('LIMIT')) {
+    cleanSql += ` LIMIT ${limit}`;
+  }
+  
+  return cleanSql;
+}
+
+// Example query templates for reference (documentation purposes)
+const exampleQueries = {
   // Price comparison queries
   priceByDistrict: `
     SELECT 
@@ -161,156 +260,108 @@ const queryTemplates = {
     ORDER BY 
       CAST(SUBSTR(quarter, 1, 2) AS INTEGER),
       CAST(SUBSTR(quarter, 4, 1) AS INTEGER)
+  `,
+
+  // Property age analysis (NEW)
+  propertyAgeAnalysis: `
+    SELECT 
+      CASE 
+        WHEN t.tenure LIKE '%commencing from%' THEN SUBSTR(t.tenure, -4)
+        ELSE 'Unknown'
+      END as completion_year,
+      CASE 
+        WHEN t.tenure LIKE '%commencing from%' THEN 2025 - CAST(SUBSTR(t.tenure, -4) AS INTEGER)
+        ELSE NULL
+      END as property_age,
+      COUNT(t.id) as transaction_count,
+      ROUND(AVG(t.price/(t.area*10.764)), 0) as avg_price_psf,
+      ROUND(AVG(t.price), 0) as avg_price
+    FROM transactions t
+    JOIN properties p ON t.property_id = p.id
+    WHERE t.contract_date >= '0124' -- Recent transactions only
+    GROUP BY completion_year, property_age
+    ORDER BY completion_year DESC
+  `,
+
+  // New vs Resale comparison (NEW)
+  newVsResale: `
+    SELECT 
+      CASE t.type_of_sale 
+        WHEN '1' THEN 'New Sale'
+        WHEN '2' THEN 'Sub-sale'
+        WHEN '3' THEN 'Resale'
+        ELSE 'Other'
+      END as sale_type,
+      COUNT(t.id) as transaction_count,
+      ROUND(AVG(t.price), 0) as avg_price,
+      ROUND(AVG(t.price/(t.area*10.764)), 0) as avg_price_psf,
+      ROUND(MIN(t.price/(t.area*10.764)), 0) as min_price_psf,
+      ROUND(MAX(t.price/(t.area*10.764)), 0) as max_price_psf
+    FROM transactions t
+    JOIN properties p ON t.property_id = p.id
+    WHERE t.contract_date >= '0124'
+    GROUP BY sale_type
+    ORDER BY transaction_count DESC
+  `,
+
+  // Recent new launches (NEW)
+  recentNewLaunches: `
+    SELECT 
+      p.project,
+      p.district,
+      p.market_segment,
+      SUBSTR(t.tenure, -4) as completion_year,
+      COUNT(t.id) as units_sold,
+      ROUND(AVG(t.price), 0) as avg_price,
+      ROUND(AVG(t.price/(t.area*10.764)), 0) as avg_price_psf,
+      MIN(t.contract_date) as first_sale_date,
+      MAX(t.contract_date) as latest_sale_date
+    FROM properties p
+    JOIN transactions t ON p.id = t.property_id
+    WHERE t.tenure LIKE '%commencing from 202%' -- Properties completed in 2020s
+      AND t.type_of_sale = '1' -- New sales only
+    GROUP BY p.project, p.district, p.market_segment, completion_year
+    ORDER BY completion_year DESC, units_sold DESC
   `
 };
 
-// Natural language processing for query generation
-class PropertyQueryProcessor {
+// Simple SQL execution processor
+class SQLExecutor {
   private dbManager: DatabaseManager;
 
   constructor() {
     this.dbManager = new DatabaseManager();
   }
 
-  // Parse natural language question and generate appropriate SQL
-  async processQuery(question: string, format: string = 'table', limit: number = 50): Promise<any> {
-    const normalizedQuery = question.toLowerCase();
-    
+  // Execute SQL query with security validation
+  async executeQuery(sqlQuery: string, description: string = 'Custom query', format: string = 'table', limit: number = 100): Promise<any> {
     try {
-      // Determine query type based on keywords
-      const queryType = this.identifyQueryType(normalizedQuery);
-      const filters = this.extractFilters(normalizedQuery);
+      // Security validation
+      if (!isSelectQuery(sqlQuery)) {
+        throw new Error('Only SELECT queries are allowed. Forbidden operations detected.');
+      }
       
-      // Generate SQL query
-      const { sql, description } = this.generateSQL(queryType, filters, limit);
+      // Sanitize and add limits
+      const safeSql = sanitizeSQL(sqlQuery, limit);
       
-      // Execute query
-      const results = this.dbManager.getDatabase().prepare(sql).all();
+      console.error(`Executing SQL: ${safeSql}`);
+      
+      // Execute query with timeout
+      const results = this.dbManager.getDatabase().prepare(safeSql).all();
       
       // Format output based on requested format
-      return this.formatOutput(results, format, description, question);
+      return this.formatOutput(results, format, description, sqlQuery);
       
     } catch (error) {
-      console.error('Error processing property query:', error);
-      return this.formatError(error instanceof Error ? error.message : 'Unknown error', question);
+      console.error('Error executing SQL query:', error);
+      return this.formatError(error instanceof Error ? error.message : 'Unknown error', sqlQuery);
     } finally {
       this.dbManager.close();
     }
   }
 
-  private identifyQueryType(query: string): string {
-    // Keywords to identify query patterns
-    if (query.includes('district') && (query.includes('compare') || query.includes('vs'))) {
-      return 'priceByDistrict';
-    }
-    if (query.includes('bedroom') || query.includes('room')) {
-      return 'rentalByBedrooms';
-    }
-    if (query.includes('yield') || query.includes('rental yield')) {
-      return 'rentalYield';
-    }
-    if (query.includes('property type') || query.includes('condo') || query.includes('apartment')) {
-      return 'priceByPropertyType';
-    }
-    if (query.includes('trend') || query.includes('over time') || query.includes('quarterly')) {
-      return 'trendAnalysis';
-    }
-    if (query.includes('market segment') || query.includes('ccr') || query.includes('rcr') || query.includes('ocr')) {
-      return 'marketSegmentTrends';
-    }
-    if (query.includes('near') || query.includes('around') || query.includes('orchard') || query.includes('mrt')) {
-      return 'nearLocation';
-    }
-    
-    // Default to general location-based query
-    return 'nearLocation';
-  }
 
-  private extractFilters(query: string): any {
-    const filters: any = {};
-    
-    // Extract districts
-    const districtMatch = query.match(/district\s*(\d+|[0-9]+)/gi);
-    if (districtMatch) {
-      filters.districts = districtMatch.map(d => d.replace(/district\s*/i, '').padStart(2, '0'));
-    }
 
-    // Extract market segments
-    if (query.includes('ccr')) filters.marketSegments = ['CCR'];
-    if (query.includes('rcr')) filters.marketSegments = ['RCR'];
-    if (query.includes('ocr')) filters.marketSegments = ['OCR'];
-
-    // Extract property types
-    if (query.includes('condo')) filters.propertyTypes = ['Condominium'];
-    if (query.includes('apartment')) filters.propertyTypes = ['Apartment'];
-    if (query.includes('terrace')) filters.propertyTypes = ['Terrace'];
-
-    // Extract bedroom counts
-    const bedroomMatch = query.match(/(\d+)[\s-]*bedroom/gi);
-    if (bedroomMatch) {
-      filters.bedrooms = bedroomMatch.map(b => parseInt(b.replace(/[\s-]*bedroom/gi, '')));
-    }
-
-    // Extract locations
-    if (query.includes('orchard')) filters.location = 'orchard';
-    if (query.includes('marina')) filters.location = 'marina';
-    if (query.includes('sentosa')) filters.location = 'sentosa';
-
-    // Extract time periods
-    if (query.includes('last year') || query.includes('recent')) {
-      filters.timeframe = 'recent';
-    }
-    if (query.includes('2024')) filters.year = '24';
-    if (query.includes('2023')) filters.year = '23';
-
-    return filters;
-  }
-
-  private generateSQL(queryType: string, filters: any, limit: number): { sql: string; description: string } {
-    let template = queryTemplates[queryType as keyof typeof queryTemplates];
-    let whereConditions: string[] = ['1=1']; // Base condition
-    let description = '';
-
-    // Apply filters based on extracted criteria
-    if (filters.districts) {
-      whereConditions.push(`p.district IN ('${filters.districts.join("','")}')`);
-      description += `Districts: ${filters.districts.join(', ')} `;
-    }
-
-    if (filters.marketSegments) {
-      whereConditions.push(`p.market_segment IN ('${filters.marketSegments.join("','")}')`);
-      description += `Market: ${filters.marketSegments.join(', ')} `;
-    }
-
-    if (filters.propertyTypes) {
-      whereConditions.push(`t.property_type IN ('${filters.propertyTypes.join("','")}')`);
-      description += `Types: ${filters.propertyTypes.join(', ')} `;
-    }
-
-    if (filters.bedrooms) {
-      whereConditions.push(`r.bedrooms IN (${filters.bedrooms.join(',')})`);
-      description += `Bedrooms: ${filters.bedrooms.join(', ')} `;
-    }
-
-    if (filters.location) {
-      if (filters.location === 'orchard') {
-        whereConditions.push(`(p.street LIKE '%ORCHARD%' OR p.district = '09')`);
-        description += 'Location: Orchard area ';
-      }
-    }
-
-    if (filters.timeframe === 'recent') {
-      whereConditions.push(`(t.contract_date >= '0123' OR r.lease_date >= '0123')`);
-      description += 'Period: Last 2 years ';
-    }
-
-    // Replace placeholder and add limit
-    const sql = template
-      .replace('{where_conditions}', whereConditions.join(' AND '))
-      .replace(/ORDER BY[^;]*/, `$& LIMIT ${limit}`);
-
-    return { sql, description: description.trim() || 'General property analysis' };
-  }
 
   private formatOutput(results: any[], format: string, description: string, originalQuestion: string): any {
     if (results.length === 0) {
@@ -500,8 +551,8 @@ class PropertyQueryProcessor {
 }
 
 export async function handleQueryPropertyData(args: any) {
-  const { question, format = 'table', limit = 50 } = args;
+  const { sql_query, description = 'Custom property analysis', format = 'table', limit = 100 } = args;
   
-  const processor = new PropertyQueryProcessor();
-  return await processor.processQuery(question, format, limit);
+  const executor = new SQLExecutor();
+  return await executor.executeQuery(sql_query, description, format, limit);
 }

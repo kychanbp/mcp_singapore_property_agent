@@ -25,6 +25,9 @@ export interface PropertySearchOptions {
   districts?: string[];
   fromDate?: string; // MMYY format
   toDate?: string;   // MMYY format
+  minCompletionYear?: number;
+  maxPropertyAge?: number;
+  saleTypes?: string[]; // '1'=New, '2'=Sub-sale, '3'=Resale
   limit?: number;
 }
 
@@ -295,6 +298,9 @@ export class DatabaseManager {
       districts,
       fromDate,
       toDate,
+      minCompletionYear,
+      maxPropertyAge,
+      saleTypes,
       limit = 50
     } = options;
 
@@ -332,7 +338,7 @@ export class DatabaseManager {
     }
     
     // Add transaction filters if specified
-    if (minPrice || maxPrice || propertyTypes || fromDate || toDate) {
+    if (minPrice || maxPrice || propertyTypes || fromDate || toDate || minCompletionYear || maxPropertyAge || saleTypes) {
       query += `
         AND EXISTS (
           SELECT 1 FROM transactions t 
@@ -362,6 +368,25 @@ export class DatabaseManager {
       if (toDate) {
         query += ` AND t.contract_date <= ?`;
         params.push(toDate);
+      }
+      
+      // Filter by completion year
+      if (minCompletionYear) {
+        query += ` AND CAST(SUBSTR(t.tenure, -4) AS INTEGER) >= ?`;
+        params.push(minCompletionYear);
+      }
+      
+      // Filter by property age
+      if (maxPropertyAge) {
+        const minYear = 2025 - maxPropertyAge;
+        query += ` AND CAST(SUBSTR(t.tenure, -4) AS INTEGER) >= ?`;
+        params.push(minYear);
+      }
+      
+      // Filter by sale type
+      if (saleTypes && saleTypes.length > 0) {
+        query += ` AND t.type_of_sale IN (${saleTypes.map(() => '?').join(',')})`;
+        params.push(...saleTypes);
       }
       
       query += ')';
