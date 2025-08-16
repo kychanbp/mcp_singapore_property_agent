@@ -12,6 +12,7 @@ import { getDetailedRouteTool } from './tools/getDetailedRoute.js';
 import { searchPropertiesTool, handleSearchProperties } from './tools/searchProperties.js';
 import { searchPropertiesMultipleTool, handleSearchPropertiesMultiple } from './tools/searchPropertiesMultiple.js';
 import { initPropertyDatabaseTool, handleInitPropertyDatabase } from './tools/initPropertyDatabase.js';
+import { queryPropertyDataTool, handleQueryPropertyData } from './tools/queryPropertyData.js';
 
 export function setupTools(server: Server) {
   // Register tools list handler
@@ -24,7 +25,8 @@ export function setupTools(server: Server) {
         getDetailedRouteTool.definition,
         initPropertyDatabaseTool,
         searchPropertiesTool,
-        searchPropertiesMultipleTool
+        searchPropertiesMultipleTool,
+        queryPropertyDataTool
       ]
     };
   });
@@ -55,6 +57,9 @@ export function setupTools(server: Server) {
           
         case 'search_properties_multiple':
           return await handleSearchPropertiesMultiple(args);
+          
+        case 'query_property_data':
+          return await handleQueryPropertyData(args);
           
         default:
           throw new Error(`Unknown tool: ${name}`);
