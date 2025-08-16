@@ -94,4 +94,8 @@ data/
 claude_desktop_config_fixed.json
 
 # Test files
-test.js
+test*.js
+
+# Session/auth files
+cookies.txt
+*.cookies
